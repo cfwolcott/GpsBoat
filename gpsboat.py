@@ -9,16 +9,19 @@ import os
 import sys
 import math
 
-import arduino
+ENABLE_ARDWEENY = 0
+#import arduino
+import boatgps
 
-HOME_LAT = 33.879908
-HOME_LONG = -117.947559
+PIER_LAT = 28.416
+PIER_LONG = -80.593
 
-MARK_LAT = 28.58389
-MARK_LONG = -80.809322
+STATION_41113_LAT = 28.400
+STATION_41113_LONG = -80.530
 
-TEST_LAT = 33.879854
-TEST_LONG = -117.950833
+# 20 mile buoy
+STATION_41009_LAT = 28.523
+STATION_41009_LONG = -80.184
 
 # System states for LED indicators
 SYS_STATE_INIT = 1
@@ -55,39 +58,6 @@ def SetSystemState( state ):
 	return
 
 #--------------------------------------------------------------------
-# Returns distance from origin (lat1, lon1) to target location (lat2, lon2)
-def CalcDistance( lat1, lon1, lat2, lon2 ):
-	# Haversine method
-	# earth mean Radius
-	#R = 6378.1 # km
-	R = 3963.19 # mi
-	
-	dLat = math.radians(lat2 - lat1)
-	dLon = math.radians(lon2 - lon1)
-	lat1 = math.radians(lat1)
-	lat2 = math.radians(lat2)
-	
-	a = math.sin(dLat / 2) * math.sin(dLat / 2) \
-		+ math.cos(lat1) * math.cos(lat2) \
-		* math.sin(dLon /2) * math.sin(dLon / 2);
-	c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-	
-	return R * c
-
-#--------------------------------------------------------------------
-# Returns compass bearing from origin (lat1, lon2) to target location (lat2, lon2)
-def CalcBearing( lat1, lon1, lat2, lon2 ):
-	dLon = math.radians(lon2 - lon1)
-	lat1 = math.radians(lat1)
-	lat2 = math.radians(lat2)
-	
-	y = math.sin(dLon) * math.cos(lat2)
-	x = math.cos(lat1) * math.sin(lat2) \
-		- math.sin(lat1) * math.cos(lat2) * math.cos(dLon)
-	theta = math.degrees( math.atan2(y, x) )
-	return (theta + 360.0) % 360.0
-
-#--------------------------------------------------------------------
 def calcTurn(Btarget, Bcurrent):
 	"""Returns tuple (turn angle [rads], turn dir [+1 == right, -1 == left])."""
 
@@ -101,34 +71,37 @@ def calcTurn(Btarget, Bcurrent):
 	if neg and big: theta = 2*PI - abs(diff); lr = +1
 
 	return (theta, lr)
+
 #--------------------------------------------------------------------
 def main(argv):
 
 	print "GPS Boat - Version 1.0"
 	
 	# initialize system
-	
-	# arduino controller
-	ard = arduino.Arduino()
-	ard.SetI2cAddress( 0x4 )
-	
-	print "Ardweeny Version: " + str( ard.GetReg( VERSION_REG ) )
 
-	print "Motor OFF"
-	ard.SetReg( MOTOR_REG, MOTOR_OFF )
+	if ENABLE_ARDWEENY:
+		# arduino controller
+		ard = arduino.Arduino()
+		ard.SetI2cAddress( 0x4 )
 	
-	print "Steering Servo Sequence ..."
-	ard.SetReg( STEERING_REG, STEERING_LEFT )
-	time.sleep(1)
-	ard.SetReg( STEERING_REG, STEERING_NEUTRAL )
-	time.sleep(1)
-	ard.SetReg( STEERING_REG, STEERING_RIGHT )
-	time.sleep(1)
+		print "Ardweeny Version: " + str( ard.GetReg( VERSION_REG ) )
+
+		print "Motor OFF"
+		ard.SetReg( MOTOR_REG, MOTOR_OFF )
 	
-	ard.SetReg( STEERING_REG, STEERING_NEUTRAL )
+		print "Steering Servo Sequence ..."
+		ard.SetReg( STEERING_REG, STEERING_LEFT )
+		time.sleep(1)
+		ard.SetReg( STEERING_REG, STEERING_NEUTRAL )
+		time.sleep(1)
+		ard.SetReg( STEERING_REG, STEERING_RIGHT )
+		time.sleep(1)
+	
+		ard.SetReg( STEERING_REG, STEERING_NEUTRAL )
 	
 	# GPS
-	
+	g = boatgps.BoatGps()
+
 	# Main loop
 	while( True ):
 
@@ -140,25 +113,25 @@ def main(argv):
 		# begin navigation sequence
 		SetSystemState( SYS_STATE_NAVIGATING )
 		
-		target_bearing = CalcBearing( HOME_LAT, HOME_LONG, MARK_LAT, MARK_LONG )
-		target_distance = CalcDistance( HOME_LAT, HOME_LONG, MARK_LAT, MARK_LONG )
-		print "Bearing:  " + str(target_bearing) + " degrees"
-		print "Distance: " + str(target_distance) + " miles"
-		
-		target_bearing = CalcBearing( HOME_LAT, HOME_LONG, TEST_LAT, TEST_LONG )
-		target_distance = CalcDistance( HOME_LAT, HOME_LONG, TEST_LAT, TEST_LONG )
-		print "Bearing:  " + str(target_bearing) + " degrees"
-		if target_distance < 1.0:
-			target_distance = target_distance * 5280
-			print "Distance: " + str(target_distance) + " feet"
-		else:
-			print "Distance: " + str(target_distance) + " miles"
+		print "Distance and Bear to 4-mile marker from Pier:"
+		target_bearing = g.CalcBearing( PIER_LAT, PIER_LONG, STATION_41113_LAT, STATION_41113_LONG )
+		target_distance = g.CalcDistance( PIER_LAT, PIER_LONG, STATION_41113_LAT, STATION_41113_LONG )
+		print "   Distance: " + str(target_distance) + " miles"
+		print "   Bearing:  " + str(target_bearing) + " degrees"
+		print
+
+		print "Distance and Bear to 20-mile marker from Pier:"
+		target_bearing = g.CalcBearing( PIER_LAT, PIER_LONG, STATION_41009_LAT, STATION_41009_LONG )
+		target_distance = g.CalcDistance( PIER_LAT, PIER_LONG, STATION_41009_LAT, STATION_41009_LONG )
+		print "   Distance: " + str(target_distance) + " miles"
+		print "   Bearing:  " + str(target_bearing) + " degrees"
+		print
 		
 		exit()
 		
 #--------------------------------------------------------------------
 if __name__ == "__main__":
 	os.system("clear")
-	print "--== Arduino Test Program ==--"
+	print "--== GpsBoat Test Program ==--"
 	main(sys.argv[1:])
 	
